@@ -1,0 +1,397 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Little Runner · Stopwatch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #fffaf0;
+    --accent: #ffd45e;
+    --sky-top: #0a1030;
+    --sky-bot: #1b2152;
+    --ground: #10261c;
+    --font: "Fredoka", ui-rounded, "Nunito", "Trebuchet MS", "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    height: 100vh; height: 100dvh;
+    overflow: hidden;
+    color: var(--ink);
+    font-family: var(--font);
+    background: linear-gradient(180deg, var(--sky-top), var(--sky-bot));
+    display: grid;
+    grid-template-rows: 1fr auto auto;
+    padding: 16px 20px 24px;
+  }
+  #stars, #orbs, #clouds { position: fixed; inset: 0; pointer-events: none; }
+  #stars i {
+    position: absolute; border-radius: 50%; background: #fff;
+    animation: twinkle var(--d, 4s) ease-in-out infinite; animation-delay: var(--delay, 0s);
+  }
+  @keyframes twinkle { 0%,100% { opacity: var(--lo, .25); } 50% { opacity: 1; } }
+  .orb { position: absolute; left: 0; top: 0; will-change: transform, opacity; }
+  .orb svg { display: block; overflow: visible; }
+  .cloud { position: absolute; left: 0; will-change: transform; }
+
+  main { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 0; }
+  .phase {
+    font-size: clamp(16px, 2.6vw, 24px); font-weight: 500; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--accent); min-height: 1.4em; text-shadow: 0 2px 10px rgba(0,0,0,.45);
+  }
+  .readout {
+    font-size: clamp(64px, 18vw, 200px); font-weight: 600; line-height: 1.05; margin: .04em 0 .06em; white-space: nowrap;
+    text-shadow: 0 4px 0 rgba(0,0,0,.18), 0 8px 36px rgba(0,0,0,.35);
+  }
+  .readout .d { display: inline-block; width: .62em; text-align: center; }
+  .readout .p { display: inline-block; width: .3em; text-align: center; }
+  .readout small { font-size: .42em; color: var(--accent); font-weight: 500; }
+
+  /* running track */
+  #track { position: relative; z-index: 2; width: 100%; height: 104px; margin-top: 6px; }
+  #track svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .lap-flag { animation: plant .5s cubic-bezier(.3,1.6,.5,1); transform-box: fill-box; transform-origin: bottom center; }
+  @keyframes plant { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+
+  footer { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 14px; margin-top: 8px; }
+  ul {
+    list-style: none; margin: 0; padding: 4px 18px; width: min(92vw, 440px); max-height: 20vh; overflow-y: auto; text-align: left;
+    background: rgba(8, 12, 34, .5); backdrop-filter: blur(8px);
+    border: 2px solid rgba(255,255,255,.18); border-radius: 22px;
+  }
+  ul:empty { display: none; }
+  li {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 8px 4px; border-top: 1px solid rgba(255,255,255,.14);
+    font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums;
+  }
+  li:first-child { border-top: none; }
+  li span:first-child { color: var(--accent); font-size: 14px; letter-spacing: .12em; text-transform: uppercase; }
+  li.current { color: #fff; }
+  li.best span:last-child::before { content: "★ "; color: var(--accent); font-size: 15px; }
+  li.worst { opacity: .6; }
+
+  .controls { display: flex; gap: 20px; }
+  button {
+    min-width: 132px; height: 64px; padding: 0 28px; border-radius: 32px; cursor: pointer;
+    font-family: var(--font); font-size: 22px; font-weight: 600; letter-spacing: .04em;
+    border: none; color: #fff; background: rgba(255,255,255,.18);
+    box-shadow: 0 5px 0 rgba(0,0,0,.28);
+    transition: transform .08s, box-shadow .08s, opacity .25s, filter .2s;
+  }
+  button:hover:not(:disabled) { filter: brightness(1.12); }
+  button:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 1px 0 rgba(0,0,0,.28); }
+  button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+  button:disabled { opacity: .4; cursor: default; }
+  #startStop { background: linear-gradient(180deg, #5ee08a, #2fb862); box-shadow: 0 5px 0 #1b7a40; }
+  #startStop.running { background: linear-gradient(180deg, #ff8a7a, #f0554a); box-shadow: 0 5px 0 #a82f27; }
+  #startStop:active:not(:disabled) { box-shadow: 0 1px 0 #1b7a40; }
+  #startStop.running:active:not(:disabled) { box-shadow: 0 1px 0 #a82f27; }
+  #lapReset { background: linear-gradient(180deg, #ffe27a, #ffbf3c); color: #5a3b00; box-shadow: 0 5px 0 #b27d10; }
+  #lapReset:active:not(:disabled) { box-shadow: 0 1px 0 #b27d10; }
+  .hint { font-size: 14px; color: rgba(255,250,240,.75); text-shadow: 0 1px 6px rgba(0,0,0,.5); }
+
+  @media (max-height: 640px) { button { height: 52px; font-size: 18px; } .hint { display: none; } #track { height: 88px; } }
+  @media (prefers-reduced-motion: reduce) { #stars i, .lap-flag { animation: none; } }
+</style>
+</head>
+<body>
+<div id="stars" aria-hidden="true"></div>
+<div id="clouds" aria-hidden="true"></div>
+
+<div id="orbs" aria-hidden="true">
+  <div class="orb" id="moon">
+    <svg width="70" height="70" viewBox="-35 -35 70 70">
+      <defs><radialGradient id="mg"><stop offset="0" stop-color="#fff3c9" stop-opacity=".55"/><stop offset="1" stop-color="#fff3c9" stop-opacity="0"/></radialGradient></defs>
+      <circle r="34" fill="url(#mg)"/>
+      <path d="M7 -19 A19 19 0 1 0 7 19 A15 15 0 1 1 7 -19z" fill="#fff6d6"/>
+    </svg>
+  </div>
+  <div class="orb" id="sun">
+    <svg width="90" height="90" viewBox="-45 -45 90 90">
+      <defs><radialGradient id="sg"><stop offset="0" stop-color="#fff3c9" stop-opacity=".95"/><stop offset="1" stop-color="#fff3c9" stop-opacity="0"/></radialGradient></defs>
+      <circle r="44" fill="url(#sg)"/>
+      <circle r="15" fill="#ffd54a"/>
+      <circle cx="-5" cy="-2" r="1.8" fill="#8a5a00"/><circle cx="5" cy="-2" r="1.8" fill="#8a5a00"/>
+      <path d="M-5 4 Q0 9 5 4" fill="none" stroke="#8a5a00" stroke-width="1.6" stroke-linecap="round"/>
+      <g id="rays" stroke="#ffd54a" stroke-width="3" stroke-linecap="round"></g>
+    </svg>
+  </div>
+</div>
+
+<main>
+  <div class="phase" id="phase">Deep Night</div>
+  <div class="readout" id="readout"></div>
+</main>
+
+<div id="track" aria-hidden="true">
+  <svg id="trackSvg">
+    <rect id="ground" x="-20" width="3000" height="60" rx="0"/>
+    <g id="tickG"></g>
+    <line id="trackBase" stroke="rgba(255,255,255,.45)" stroke-width="3" stroke-linecap="round"/>
+    <line id="trackProg" stroke="#ffd45e" stroke-width="5" stroke-linecap="round"/>
+    <g id="flags"></g>
+    <g id="dust"></g>
+    <!-- the little runner (feet at y = 0) -->
+    <g id="kid">
+      <ellipse cx="0" cy="1" rx="14" ry="3" fill="rgba(0,0,0,.25)"/>
+      <g id="kidBody">
+        <polyline id="armB" fill="none" stroke="#e8b98f" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        <polyline id="legB" fill="none" stroke="#e8b98f" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle id="shoeB" r="4.6" fill="#d94a3d"/>
+        <line x1="-1" y1="-22" x2="3" y2="-38" stroke="#ff7a6b" stroke-width="13" stroke-linecap="round"/>
+        <rect x="-8" y="-29" width="15" height="9" rx="4" fill="#3d7bd9" transform="rotate(8 0 -24)"/>
+        <polyline id="legF" fill="none" stroke="#f6d3b0" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle id="shoeF" r="4.6" fill="#ef6455"/>
+        <polyline id="armF" fill="none" stroke="#f6d3b0" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        <g id="head" transform="translate(6 -49)">
+          <circle r="11" fill="#f6d3b0"/>
+          <path d="M-11 0 A11 11 0 0 1 9 -7 Q2 -9 -3 -6 Q-8 -5 -11 0z" fill="#4a3022"/>
+          <path d="M-9 -4 Q-15 2 -12 9 Q-8 5 -8 0z" fill="#4a3022" id="tail"/>
+          <circle cx="5" cy="-1" r="1.7" fill="#2a1a12"/>
+          <circle cx="8" cy="4" r="2.4" fill="#ff9a8a" opacity=".6"/>
+          <path d="M3 5 Q6 8 9 5" fill="none" stroke="#a54a3a" stroke-width="1.4" stroke-linecap="round"/>
+        </g>
+      </g>
+    </g>
+  </svg>
+</div>
+
+<footer>
+  <ul id="laps" aria-live="polite"></ul>
+  <div class="controls">
+    <button id="lapReset" disabled>Lap</button>
+    <button id="startStop">Start</button>
+  </div>
+  <div class="hint">Space Start / Stop &nbsp;·&nbsp; L Lap &nbsp;·&nbsp; R Reset</div>
+</footer>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const NS = 'http://www.w3.org/2000/svg';
+  const CYCLE = 60 * 1000;               // one full day/night cycle = 60 s = one run across the screen
+
+  const SKY = [
+    [0.00, '#0a1030', '#1b2152', 'Deep Night'],
+    [0.14, '#0d1438', '#262a63', 'Deep Night'],
+    [0.28, '#3a2a63', '#c4667c', 'Dawn'],
+    [0.40, '#2d5a93', '#e0a782', 'Morning'],
+    [0.50, '#2a63a3', '#7db4dc', 'Noon'],
+    [0.62, '#34609b', '#d9b07a', 'Afternoon'],
+    [0.72, '#6a3a7a', '#e58f55', 'Sunset'],
+    [0.84, '#251f55', '#7a3a6c', 'Dusk'],
+    [1.00, '#0a1030', '#1b2152', 'Deep Night'],
+  ];
+  const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const mix = (a, b, t) => {
+    const A = hex(a), B = hex(b);
+    return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join('');
+  };
+  function sky(p) {
+    let i = 0;
+    while (i < SKY.length - 2 && p > SKY[i + 1][0]) i++;
+    const [p0, t0, b0] = SKY[i], [p1, t1, b1] = SKY[i + 1];
+    const t = (p - p0) / (p1 - p0);
+    return { top: mix(t0, t1, t), bot: mix(b0, b1, t), name: SKY[t < .5 ? i : i + 1][3] };
+  }
+
+  const el = (name, attrs, parent) => {
+    const e = document.createElementNS(NS, name);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    parent && parent.appendChild(e);
+    return e;
+  };
+  const rnd = (a, b) => a + Math.random() * (b - a);
+
+  for (let i = 0; i < 8; i++) {
+    const a = i * Math.PI / 4;
+    el('line', { x1: 23 * Math.cos(a), y1: 23 * Math.sin(a), x2: 32 * Math.cos(a), y2: 32 * Math.sin(a) }, $('rays'));
+  }
+  for (let i = 0; i < 100; i++) {
+    const s = document.createElement('i'), z = rnd(1, 2.6);
+    s.style.cssText = `left:${rnd(0, 100)}%;top:${rnd(0, 70)}%;width:${z}px;height:${z}px;--d:${rnd(2.5, 6)}s;--delay:${rnd(0, 5)}s;--lo:${rnd(.1, .4)}`;
+    $('stars').appendChild(s);
+  }
+  const clouds = [];
+  for (let i = 0; i < 6; i++) {
+    const c = document.createElement('div'), w = rnd(90, 170);
+    c.className = 'cloud';
+    c.style.top = rnd(6, 58) + '%';
+    c.innerHTML = `<svg width="${w}" height="${w * .45}" viewBox="0 0 100 45"><g fill="currentColor"><ellipse cx="30" cy="30" rx="26" ry="13"/><ellipse cx="55" cy="22" rx="24" ry="17"/><ellipse cx="74" cy="31" rx="22" ry="11"/></g></svg>`;
+    $('clouds').appendChild(c);
+    clouds.push({ c, w, base: rnd(0, 1), speed: rnd(.5, 1.3) });
+  }
+
+  /* ---------- track ---------- */
+  const PAD = 34, GY = 74;                    // side padding, ground-line y
+  let W = 0;
+  function buildTrack() {
+    W = $('track').clientWidth;
+    const svg = $('trackSvg');
+    svg.setAttribute('viewBox', `0 0 ${W} 104`);
+    $('ground').setAttribute('y', GY + 6);
+    for (const id of ['trackBase', 'trackProg']) { $(id).setAttribute('y1', GY); $(id).setAttribute('y2', GY); }
+    $('trackBase').setAttribute('x1', PAD); $('trackBase').setAttribute('x2', W - PAD);
+    $('trackProg').setAttribute('x1', PAD);
+    $('tickG').innerHTML = '';
+    for (let i = 0; i <= 60; i++) {
+      const x = PAD + (W - 2 * PAD) * i / 60, big = i % 5 === 0;
+      el('line', { x1: x, x2: x, y1: GY + 10, y2: GY + (big ? 24 : 17), stroke: 'rgba(255,255,255,.5)', 'stroke-width': big ? 2.5 : 1.5, 'stroke-linecap': 'round' }, $('tickG'));
+    }
+    $('flags').innerHTML = '';
+    lapFracs.forEach(f => addFlag(f, false));
+  }
+  const trackX = f => PAD + (W - 2 * PAD) * f;
+  function addFlag(f, animate = true) {
+    const x = trackX(f), g = el('g', { class: animate ? 'lap-flag' : '' }, $('flags'));
+    el('line', { x1: x, y1: GY, x2: x, y2: GY - 30, stroke: '#fff', 'stroke-width': 2.5, 'stroke-linecap': 'round' }, g);
+    el('path', { d: `M${x} ${GY - 30} L${x + 17} ${GY - 24} L${x} ${GY - 17}z`, fill: '#ffd45e' }, g);
+  }
+
+  /* running pose: two-segment limbs driven by a gait phase */
+  const pt = (x, y, len, ang) => [x + len * Math.sin(ang), y + len * Math.cos(ang)];
+  const rad = d => d * Math.PI / 180;
+  function leg(phase) {
+    const hip = [0, -22];
+    const th = rad(48 * Math.sin(phase));                          // thigh swing (+ = forward)
+    const knee = pt(hip[0], hip[1], 12, th);
+    const bend = rad(18 + 62 * Math.max(0, Math.sin(phase + 1.9))); // knee folds as the leg swings through
+    const foot = pt(knee[0], knee[1], 12, th - bend);
+    return [hip, knee, foot];
+  }
+  function arm(phase) {
+    const sh = [2, -37];
+    const up = rad(-48 * Math.sin(phase));
+    const elbow = pt(sh[0], sh[1], 9, up);
+    const hand = pt(elbow[0], elbow[1], 9, up + rad(75));
+    return [sh, elbow, hand];
+  }
+  const poly = (id, pts) => $(id).setAttribute('points', pts.map(p => p.join(',')).join(' '));
+  function pose(t, moving) {
+    const ph = t / 1000 * 15;                                       // ~2.4 strides per second
+    let bob = 0, lean = 0;
+    if (moving) {
+      const lf = leg(ph), lb = leg(ph + Math.PI), af = arm(ph + Math.PI), ab = arm(ph);
+      poly('legF', lf); poly('legB', lb); poly('armF', af); poly('armB', ab);
+      $('shoeF').setAttribute('cx', lf[2][0]); $('shoeF').setAttribute('cy', lf[2][1]);
+      $('shoeB').setAttribute('cx', lb[2][0]); $('shoeB').setAttribute('cy', lb[2][1]);
+      bob = -Math.abs(Math.sin(ph)) * 4; lean = 6;
+    } else {
+      poly('legF', [[0, -22], [2, -11], [3, -3]]); poly('legB', [[0, -22], [-3, -11], [-4, -3]]);
+      poly('armF', [[2, -37], [3, -28], [4, -20]]); poly('armB', [[2, -37], [-2, -28], [-3, -20]]);
+      $('shoeF').setAttribute('cx', 3); $('shoeF').setAttribute('cy', -3);
+      $('shoeB').setAttribute('cx', -4); $('shoeB').setAttribute('cy', -3);
+    }
+    $('kidBody').setAttribute('transform', `translate(0 ${bob}) rotate(${lean} 0 0)`);
+    $('tail').setAttribute('transform', `rotate(${moving ? 14 * Math.sin(ph * 2) - 8 : 0} -9 -4)`);
+  }
+
+  /* ---------- state ---------- */
+  let running = false, startTime = 0, elapsed = 0, lapStart = 0, laps = [], lapFracs = [], rafId = null;
+
+  const pad = n => String(n).padStart(2, '0');
+  function parts(ms) {
+    return { cs: Math.floor(ms / 10) % 100, s: Math.floor(ms / 1000) % 60, m: Math.floor(ms / 60000) % 60, h: Math.floor(ms / 3600000) };
+  }
+  const fmt = ms => { const { h, m, s, cs } = parts(ms); return (h ? h + ':' : '') + pad(m) + ':' + pad(s) + '.' + pad(cs); };
+  const now = () => running ? elapsed + (performance.now() - startTime) : elapsed;
+  const digits = s => [...s].map(c => `<span class="${c === ':' || c === '.' ? 'p' : 'd'}">${c}</span>`).join('');
+
+  /* ---------- render ---------- */
+  let lastDust = 0;
+  function render(t) {
+    const p = (t % CYCLE) / CYCLE, k = sky(p);
+    const root = document.documentElement.style;
+    root.setProperty('--sky-top', k.top);
+    root.setProperty('--sky-bot', k.bot);
+    $('ground').setAttribute('fill', mix(k.bot, '#10301f', .7));
+
+    const night = .5 + .5 * Math.cos(p * 2 * Math.PI);          // 1 = midnight, 0 = noon
+    $('stars').style.opacity = (0.1 + .9 * Math.min(1, night * 1.5)).toFixed(3);
+
+    const vw = innerWidth, vh = innerHeight;
+    const a = p * 2 * Math.PI, rx = vw * .44, ry = vh * .4, cx = vw / 2, cy = vh / 2;
+    const place = (id, sgn, size, op) => {
+      const x = cx + sgn * rx * Math.sin(a), y = cy - sgn * ry * Math.cos(a);
+      const o = $(id); o.style.transform = `translate(${x - size / 2}px, ${y - size / 2}px)`; o.style.opacity = op;
+    };
+    place('moon', 1, 70, Math.min(1, night * 2.5).toFixed(3));
+    place('sun', -1, 90, Math.min(1, (1 - night) * 2.5).toFixed(3));
+
+    // clouds drift backwards while the runner runs
+    const cloudCol = mix('#ffffff', k.bot, night * .75);
+    clouds.forEach(o => {
+      const span = vw + o.w * 2, x = ((o.base * span - t * .03 * o.speed) % span + span) % span - o.w;
+      o.c.style.transform = `translateX(${x}px)`; o.c.style.color = cloudCol; o.c.style.opacity = (.75 - night * .4).toFixed(2);
+    });
+
+    // runner
+    const f = (t / 1000 % 60) / 60, x = trackX(f);
+    $('trackProg').setAttribute('x2', x);
+    $('kid').setAttribute('transform', `translate(${x} ${GY}) scale(1.35)`);
+    pose(t, running);
+    if (running && t - lastDust > 110) {                          // little dust puffs behind the feet
+      lastDust = t;
+      const d = el('circle', { cx: x - 8, cy: GY - 2, r: 2.5, fill: 'rgba(255,255,255,.6)' }, $('dust'));
+      d.animate([{ transform: 'translate(0,0) scale(1)', opacity: .7 }, { transform: 'translate(-16px,-10px) scale(2.2)', opacity: 0 }],
+                { duration: 600, easing: 'ease-out' }).onfinish = () => d.remove();
+    }
+
+    const { h, m, s, cs } = parts(t);
+    $('readout').innerHTML = digits((h ? h + ':' : '') + pad(m) + ':' + pad(s)) + `<small>${digits('.' + pad(cs))}</small>`;
+    $('phase').textContent = k.name;
+    const cur = document.querySelector('li.current span:last-child');
+    if (cur) cur.textContent = fmt(t - lapStart);
+  }
+  function loop() { render(now()); rafId = requestAnimationFrame(loop); }
+
+  function renderLaps() {
+    const ul = $('laps'); ul.innerHTML = '';
+    if (running || elapsed > 0) ul.insertAdjacentHTML('beforeend', `<li class="current"><span>Lap ${laps.length + 1}</span><span>${fmt(now() - lapStart)}</span></li>`);
+    const min = Math.min(...laps), max = Math.max(...laps);
+    for (let i = laps.length - 1; i >= 0; i--) {
+      const c = laps.length >= 2 ? (laps[i] === min ? 'best' : laps[i] === max ? 'worst' : '') : '';
+      ul.insertAdjacentHTML('beforeend', `<li class="${c}"><span>Lap ${i + 1}</span><span>${fmt(laps[i])}</span></li>`);
+    }
+  }
+  function updateButtons() {
+    $('startStop').textContent = running ? 'Stop' : 'Start';
+    $('startStop').classList.toggle('running', running);
+    $('lapReset').textContent = running || elapsed === 0 ? 'Lap' : 'Reset';
+    $('lapReset').disabled = !running && elapsed === 0;
+  }
+
+  function startStop() {
+    if (running) { elapsed = now(); running = false; cancelAnimationFrame(rafId); render(elapsed); }
+    else { startTime = performance.now(); running = true; rafId = requestAnimationFrame(loop); }
+    updateButtons(); renderLaps();
+  }
+  function lap() {
+    if (!running) return;
+    const t = now(); laps.push(t - lapStart); lapStart = t;
+    const f = (t / 1000 % 60) / 60; lapFracs.push(f); addFlag(f);
+    renderLaps();
+  }
+  function reset() {
+    if (running) return;
+    elapsed = 0; lapStart = 0; laps = []; lapFracs = []; $('flags').innerHTML = '';
+    render(0); updateButtons(); renderLaps();
+  }
+
+  $('startStop').addEventListener('click', startStop);
+  $('lapReset').addEventListener('click', () => running ? lap() : reset());
+  document.addEventListener('keydown', e => {
+    if (e.repeat) return;
+    if (e.code === 'Space') { e.preventDefault(); startStop(); }
+    else if (e.key === 'l' || e.key === 'L') lap();
+    else if (e.key === 'r' || e.key === 'R') reset();
+  });
+  addEventListener('resize', () => { buildTrack(); render(now()); });
+
+  buildTrack(); render(0); updateButtons();
+</script>
+</body>
+</html>
